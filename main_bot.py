@@ -1,40 +1,31 @@
 import telebot
-import os
-import sys
+import logging
+from config import BOT_TOKEN
+from handlers import basic_commands, message_handler
+from logging_config import setup_logging
+
+# Настройка логирования
+setup_logging()
+logger = logging.getLogger(__name__)
 
 
-def load_secret(filename, error_message):
-    """Загружает секретный ключ из файла в той же директории."""
+def main():
+    """Основная функция для запуска бота."""
     try:
-        path = os.path.join(os.path.dirname(__file__), filename)
-        with open(path, 'r') as f:
-            return f.read().strip()
-    except FileNotFoundError:
-        print(f"ОШИБКА: {error_message}")
-        return None
+        logger.info("Initializing bot...")
+        bot = telebot.TeleBot(BOT_TOKEN)
 
-BOT_TOKEN = load_secret('Bot_TG_token.txt', "Файл с токеном бота 'Bot_TG_token.txt' не найден.")
+        # Регистрация обработчиков
+        logger.info("Registering handlers...")
+        basic_commands.register_handlers(bot)
+        message_handler.register_message_handlers(bot)
 
-if not BOT_TOKEN:
-    sys.exit("Один из ключей не загружен. Бот не может быть запущен.")
+        logger.info("Bot started and polling. Press Ctrl+C to stop.")
+        bot.polling(non_stop=True)
 
-print("Ключи успешно загружены. Инициализация сервисов...")
+    except Exception as e:
+        logger.critical(f"A critical error occurred: {e}", exc_info=True)
+        # В реальном приложении здесь можно было бы отправить уведомление администратору
 
-
-# Инициализация бота
-bot = telebot.TeleBot(BOT_TOKEN)
-
-# --- Обработчики команд ---
-
-@bot.message_handler(commands=['start'])
-def send_welcome(message):
-    bot.send_message(message.chat.id, f"Привет, {message.from_user.first_name}! Я бот, усиленный интеллектом Gemini. Задайте мне любой вопрос.")
-
-@bot.message_handler(commands=['help'])
-def send_help(message):
-    bot.send_message(message.chat.id, "Просто отправьте мне любой текстовый вопрос, и я постараюсь на него ответить.")
-
-
-
-print("Бот запущен и готов к работе. Нажмите Ctrl+C для остановки.")
-bot.polling(non_stop=True)
+if __name__ == '__main__':
+    main()

@@ -6,9 +6,6 @@ __pycache__/
 # Never commit secret files!
 Bot_TG_token.txt
 *.env
-.env
 
 # VS Code settings
 .vscode/
-# Log files
-bot.log
