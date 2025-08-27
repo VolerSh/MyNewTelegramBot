@@ -3,12 +3,12 @@ __pycache__/
 *.pyc
 
 # Environment variables and secrets
-# Never commit secret files!
-Bot_TG_token.txt
 *.env
 .env
 
-# VS Code settings
-.vscode/
-# Log files
-bot.log
+#Правила
+!Rules/
+*.md
+
+#Исключения
+*.gitignore
