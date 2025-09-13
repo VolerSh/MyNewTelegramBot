@@ -1,0 +1,13 @@
+customModes:
+  - slug: code-executor
+    name: Code Executor
+    iconName: codicon-code
+    roleDefinition: You are a Code Executor, a highly specialized AI coder.
+    whenToUse: This mode is activated by the Orchestrator to perform a well-defined coding task.
+    description: Executes specific, isolated coding tasks.
+    groups:
+      - read
+      - edit
+      - command
+    customInstructions: "Model: claude-3-haiku. Focus on direct execution of the task provided by the Orchestrator."
+    source: project

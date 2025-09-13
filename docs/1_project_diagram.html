@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Интерактивная схема проекта</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f8f9fa;
+            margin: 0;
+            overflow: hidden;
+        }
+        svg {
+            width: 100vw;
+            height: 100vh;
+        }
+        .node rect {
+            stroke: #999;
+            fill: #fff;
+            stroke-width: 1.5px;
+        }
+        .node.module rect {
+            fill: #e9f5ff;
+            stroke: #007bff;
+        }
+        .node.entrypoint rect {
+            fill: #e5f9f0;
+            stroke: #28a745;
+        }
+        .node text {
+            font-size: 12px;
+            pointer-events: none;
+        }
+        .link {
+            fill: none;
+            stroke: #999;
+            stroke-opacity: 0.6;
+            stroke-width: 1.5px;
+        }
+        .link.dashed {
+            stroke-dasharray: 5, 5;
+        }
+        #tooltip {
+            position: absolute;
+            visibility: hidden;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: #fff;
+            border-radius: 4px;
+            max-width: 300px;
+            line-height: 1.4;
+            font-size: 14px;
+        }
+        .controls {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: #fff;
+            padding: 8px;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .controls button {
+            margin: 0 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="tooltip"></div>
+    <svg id="diagram"></svg>
+    <div class="controls">
+        <button id="zoom_in">+</button>
+        <button id="zoom_out">-</button>
+        <button id="reset">Сброс</button>
+    </div>
+
+<script>
+const nodes = [
+    // Root
+    { id: 'run_bot.py', group: 'entrypoint', desc: '<strong>run_bot.py</strong><br>Главная точка входа. Запускает и управляет Telegram-ботом как дочерним процессом.' },
+    { id: 'requirements.txt', group: 'file', desc: '<strong>requirements.txt</strong><br>Список Python-библиотек, необходимых для работы.' },
+    { id: 'scrapy.cfg', group: 'file', desc: '<strong>scrapy.cfg</strong><br>Конфигурационный файл Scrapy.' },
+    { id: '.env', group: 'file', desc: '<strong>.env</strong><br>Файл для хранения секретных данных (токенов, ключей API).' },
+    { id: 'marketplace_deals.db', group: 'file', desc: '<strong>marketplace_deals.db</strong><br>Файл базы данных SQLite.' },
+
+    // App
+    { id: 'app/config.py', group: 'file', desc: '<strong>app/config.py</strong><br>Загружает переменные из .env.' },
+    { id: 'app/logging_config.py', group: 'file', desc: '<strong>app/logging_config.py</strong><br>Настраивает систему логирования.' },
+
+    // Telegram Bot Module
+    { id: 'app/telegram_bot', group: 'module', desc: '<strong>Модуль Telegram</strong><br>Отвечает за взаимодействие с пользователем. Кликните для детализации.', url: './1.1_telegram_module.html' },
+    { id: 'app/telegram_bot/bot.py', group: 'file', desc: '<strong>bot.py</strong><br>Инициализирует и запускает процесс опроса Telegram.' },
+    { id: 'app/telegram_bot/handlers.py', group: 'file', desc: '<strong>handlers.py</strong><br>Обрабатывает команды и сообщения от пользователя.' },
+    { id: 'app/telegram_bot/handlers_telegram_utils.py', group: 'file', desc: '<strong>handlers_telegram_utils.py</strong><br>Вспомогательные функции для работы с Telegram API.' },
+    { id: 'app/telegram_bot/handlers_data_processing.py', group: 'file', desc: '<strong>handlers_data_processing.py</strong><br>Функции для обработки данных.' },
+    { id: 'app/telegram_bot/handlers_database_utils.py', group: 'file', desc: '<strong>handlers_database_utils.py</strong><br>Функции для работы с базой данных.' },
+    { id: 'app/telegram_bot/handlers_reporting.py', group: 'file', desc: '<strong>handlers_reporting.py</strong><br>Функции для создания отчетов.' },
+
+    // Scraping Module
+    { id: 'app/scraping', group: 'module', desc: '<strong>Модуль парсинга (Scrapy)</strong><br>Отвечает за сбор данных. Кликните для детализации.', url: './1.2_scraping_module.html' },
+    { id: 'app/scraping/spiders/yandex_market.py', group: 'file', desc: '<strong>yandex_market.py</strong><br>Паук, который знает, как парсить Яндекс.Маркет.' },
+    { id: 'app/scraping/settings.py', group: 'file', desc: '<strong>settings.py</strong><br>Настройки Scrapy (задержки, конвейеры).' },
+    { id: 'app/scraping/decomposer.py', group: 'file', desc: '<strong>decomposer.py</strong><br>Разбирает названия товаров на характеристики.' },
+    { id: 'app/scraping/utils.py', group: 'file', desc: '<strong>utils.py</strong><br>Вспомогательные функции, включая запуск пауков.' },
+
+    // Database Module
+    { id: 'app/database', group: 'module', desc: '<strong>Модуль БД</strong><br>Отвечает за хранение данных. Кликните для детализации.', url: './1.3_database_module.html' },
+    { id: 'app/database/database.py', group: 'file', desc: '<strong>database.py</strong><br>Управляет подключением к БД.' },
+    { id: 'app/database/models.py', group: 'file', desc: '<strong>models.py</strong><br>Описывает структуру таблиц в БД.' },
+
+    // Analysis Module
+    { id: 'app/analysis', group: 'module', desc: '<strong>Модуль анализа</strong><br>Отвечает за анализ собранных данных. Кликните для детализации.', url: './1.4_analysis_module.html' },
+    { id: 'app/analysis/analyzer.py', group: 'file', desc: '<strong>analyzer.py</strong><br>Содержит логику для анализа данных.' }
+];
+
+const links = [
+    { source: 'run_bot.py', target: 'app/telegram_bot/bot.py', type: 'dashed' },
+    { source: 'app/config.py', target: '.env' },
+    { source: 'app/telegram_bot/bot.py', target: 'app/config.py' },
+    { source: 'app/telegram_bot/bot.py', target: 'app/telegram_bot/handlers.py' },
+    { source: 'app/telegram_bot/handlers.py', target: 'app/telegram_bot/handlers_reporting.py' },
+    { source: 'app/telegram_bot/handlers_reporting.py', target: 'app/scraping/utils.py' },
+    { source: 'app/telegram_bot/handlers_reporting.py', target: 'app/telegram_bot/handlers_data_processing.py' },
+    { source: 'app/telegram_bot/handlers_reporting.py', target: 'app/telegram_bot/handlers_database_utils.py' },
+    { source: 'app/telegram_bot/handlers_reporting.py', target: 'app/telegram_bot/handlers_telegram_utils.py' },
+    { source: 'app/scraping/utils.py', target: 'app/scraping/spiders/yandex_market.py' },
+    { source: 'app/scraping/spiders/yandex_market.py', target: 'app/scraping/decomposer.py' },
+    { source: 'app/scraping/decomposer.py', target: 'app/database/database.py' },
+    { source: 'app/database/database.py', target: 'app/database/models.py' },
+    { source: 'app/database/database.py', target: 'marketplace_deals.db' },
+    { source: 'app/analysis/analyzer.py', target: 'marketplace_deals.db' },
+    
+    // Module connections
+    { source: 'app/telegram_bot', target: 'app/telegram_bot/bot.py' },
+    { source: 'app/telegram_bot', target: 'app/telegram_bot/handlers.py' },
+    { source: 'app/telegram_bot', target: 'app/telegram_bot/handlers_telegram_utils.py' },
+    { source: 'app/telegram_bot', target: 'app/telegram_bot/handlers_data_processing.py' },
+    { source: 'app/telegram_bot', target: 'app/telegram_bot/handlers_database_utils.py' },
+    { source: 'app/telegram_bot', target: 'app/telegram_bot/handlers_reporting.py' },
+    { source: 'app/scraping', target: 'app/scraping/utils.py' },
+    { source: 'app/scraping', target: 'app/scraping/decomposer.py' },
+    { source: 'app/scraping', target: 'app/scraping/settings.py' },
+    { source: 'app/scraping', target: 'app/scraping/spiders/yandex_market.py' },
+    { source: 'app/database', target: 'app/database/database.py' },
+    { source: 'app/database', target: 'app/database/models.py' },
+    { source: 'app/analysis', target: 'app/analysis/analyzer.py' },
+];
+
+const width = window.innerWidth;
+const height = window.innerHeight;
+
+const svg = d3.select("svg#diagram");
+const container = svg.append("g");
+
+const simulation = d3.forceSimulation(nodes)
+    .force("link", d3.forceLink(links).id(d => d.id).distance(100))
+    .force("charge", d3.forceManyBody().strength(-300))
+    .force("center", d3.forceCenter(width / 2, height / 2));
+
+const link = container.append("g")
+    .attr("class", "links")
+    .selectAll("line")
+    .data(links)
+    .enter().append("line")
+    .attr("class", d => d.type === 'dashed' ? 'link dashed' : 'link');
+
+const node = container.append("g")
+    .attr("class", "nodes")
+    .selectAll("g")
+    .data(nodes)
+    .enter().append("g")
+    .attr("class", d => `node ${d.group}`)
+    .call(drag(simulation));
+
+node.append("rect")
+    .attr("width", 150)
+    .attr("height", 30)
+    .attr("rx", 5)
+    .attr("ry", 5);
+
+node.append("text")
+    .text(d => d.id.split('/').pop())
+    .attr("x", 75)
+    .attr("y", 15)
+    .attr("text-anchor", "middle")
+    .attr("dominant-baseline", "central");
+
+const tooltip = d3.select("#tooltip");
+
+node.on("mouseover", (event, d) => {
+    tooltip.style("visibility", "visible").html(d.desc);
+})
+.on("mousemove", (event) => {
+    tooltip.style("top", (event.pageY - 10) + "px").style("left", (event.pageX + 10) + "px");
+})
+.on("mouseout", () => {
+    tooltip.style("visibility", "hidden");
+});
+
+node.filter(d => d.url)
+    .on("click", (event, d) => {
+        window.location.href = d.url;
+    })
+    .style("cursor", "pointer");
+
+simulation.on("tick", () => {
+    link
+        .attr("x1", d => d.source.x)
+        .attr("y1", d => d.source.y)
+        .attr("x2", d => d.target.x)
+        .attr("y2", d => d.target.y);
+
+    node
+        .attr("transform", d => `translate(${d.x - 75}, ${d.y - 15})`);
+});
+
+function drag(simulation) {
+    function dragstarted(event, d) {
+        if (!event.active) simulation.alphaTarget(0.3).restart();
+        d.fx = d.x;
+        d.fy = d.y;
+    }
+    function dragged(event, d) {
+        d.fx = event.x;
+        d.fy = event.y;
+    }
+    function dragended(event, d) {
+        if (!event.active) simulation.alphaTarget(0);
+        d.fx = null;
+        d.fy = null;
+    }
+    return d3.drag()
+        .on("start", dragstarted)
+        .on("drag", dragged)
+        .on("end", dragended);
+}
+
+// Zoom functionality
+const zoom = d3.zoom()
+    .scaleExtent([0.1, 4])
+    .on("zoom", (event) => {
+        container.attr("transform", event.transform);
+    });
+
+svg.call(zoom);
+
+d3.select("#zoom_in").on("click", () => zoom.scaleBy(svg.transition().duration(750), 1.2));
+d3.select("#zoom_out").on("click", () => zoom.scaleBy(svg.transition().duration(750), 0.8));
+d3.select("#reset").on("click", () => svg.transition().duration(750).call(zoom.transform, d3.zoomIdentity));
+
+</script>
+</body>
+</html>

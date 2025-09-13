@@ -1,14 +1,27 @@
-# Python cache
+# Python
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 
-# Environment variables and secrets
-*.env
+# Scrapy
+.scrapy/
+
+# Базы данных
+*.db
+*.sqlite3
+
+# Логи
+*.log
+
+# Зависимости Node.js
+node_modules/
+
+# Файлы окружения (никогда не должны быть в репозитории)
 .env
 
-#Правила
-!Rules/
-*.md
+# Временные файлы
+.~lock.*#
 
-#Исключения
-*.gitignore
+# Настройки IDE
+.vscode/

@@ -1,0 +1,11 @@
+# Core dependencies
+python-dotenv
+python-telegram-bot
+SQLAlchemy
+Scrapy
+scrapy-playwright
+
+# For scraping (examples)
+# requests
+# beautifulsoup4
+# lxml

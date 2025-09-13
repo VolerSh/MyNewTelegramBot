@@ -1,0 +1,92 @@
+import os
+import telebot
+import logging
+import time
+import threading
+from ..config import BOT_TOKEN, YOUR_TELEGRAM_CHAT_ID
+from . import handlers
+from ..logging_config import setup_logging
+from telebot import apihelper
+
+# Радикальный метод борьбы с ProxyError: очищаем переменные окружения
+# Это гарантирует, что ни requests, ни urllib3 не будут использовать системный прокси
+os.environ['HTTP_PROXY'] = ''
+os.environ['HTTPS_PROXY'] = ''
+ 
+# Отключаем использование системных прокси на уровне telebot (может быть избыточно, но надежно)
+apihelper.proxy = {}
+
+ # Настройка логирования
+setup_logging()
+logger = logging.getLogger(__name__)
+
+# Глобальный экземпляр бота, чтобы не создавать его каждый раз
+bot = telebot.TeleBot(BOT_TOKEN)
+
+def send_telegram_message(message_text: str):
+    """
+    Отправляет текстовое сообщение в заданный в .env чат.
+    """
+    if not YOUR_TELEGRAM_CHAT_ID:
+        logger.error("Cannot send message: YOUR_TELEGRAM_CHAT_ID is not configured in .env file.")
+        return False
+    try:
+        logger.info(f"Sending message to chat_id: {YOUR_TELEGRAM_CHAT_ID}")
+        bot.send_message(YOUR_TELEGRAM_CHAT_ID, message_text, parse_mode='Markdown')
+        logger.info("Message sent successfully.")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to send message to {YOUR_TELEGRAM_CHAT_ID}: {e}", exc_info=True)
+        return False
+
+def send_startup_message_with_delay():
+    """Ждет 5 секунд и отправляет стартовое сообщение."""
+    try:
+        logger.info("Startup message thread started. Waiting for 5 seconds...")
+        time.sleep(5)
+        
+        logger.info("Sending startup message now.")
+        welcome_text = (
+            "✅ *Бот успешно запущен и готов к работе.*\n\n"
+            "Отправьте мне *любой символ* или текстовое сообщение, чтобы запустить поиск."
+        )
+        
+        if not YOUR_TELEGRAM_CHAT_ID:
+            logger.error("Cannot send startup message: YOUR_TELEGRAM_CHAT_ID is not configured.")
+            return
+
+        bot.send_message(YOUR_TELEGRAM_CHAT_ID, welcome_text, parse_mode='Markdown')
+        logger.info("Startup message sent successfully.")
+
+    except Exception as e:
+        logger.error(f"An error occurred in the startup message thread: {e}", exc_info=True)
+
+
+def start_bot():
+    """Основная функция для запуска бота."""
+    logger.info("Bot already initialized. Registering handlers...")
+    # Регистрация обработчиков
+    handlers.register_all_handlers(bot)
+
+    # Запускаем отправку приветственного сообщения в отдельном потоке
+    # Это предотвращает блокировку и решает проблемы с инициализацией
+    startup_thread = threading.Thread(target=send_startup_message_with_delay)
+    startup_thread.daemon = True # Поток завершится, если основной процесс умрет
+    startup_thread.start()
+
+    # Удаляем вебхук, чтобы избежать конфликтов
+    bot.delete_webhook(drop_pending_updates=True)
+    logger.info("Bot polling started.")
+    
+    # Запускаем поллинг с пропуском старых сообщений
+    bot.polling(non_stop=True, skip_pending=True)
+
+if __name__ == '__main__':
+    # Настройка логирования, если модуль запускается напрямую
+    from ..logging_config import setup_logging
+    setup_logging()
+    
+    try:
+        start_bot()
+    except Exception as e:
+        logger.critical(f"A critical error occurred while running the bot directly: {e}", exc_info=True)

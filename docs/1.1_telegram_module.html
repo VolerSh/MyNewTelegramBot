@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Детализация: Модуль Telegram</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f8f9fa;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        h1, h2 {
+            text-align: center;
+            color: #1d2129;
+        }
+        svg {
+            width: 100%;
+            height: 50vh;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background: #fff;
+        }
+        .node rect {
+            stroke: #007bff;
+            fill: #e9f5ff;
+            stroke-width: 1.5px;
+        }
+        .node text {
+            font-size: 14px;
+        }
+        .link {
+            fill: none;
+            stroke: #555;
+            stroke-opacity: 0.8;
+            stroke-width: 2px;
+        }
+        #tooltip {
+            position: absolute;
+            visibility: hidden;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: #fff;
+            border-radius: 4px;
+            max-width: 300px;
+            font-size: 14px;
+        }
+        .description {
+            margin-top: 30px;
+            padding: 20px;
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        .description h3 {
+            margin-top: 0;
+            color: #007bff;
+        }
+        .arrow {
+            font-weight: bold;
+            color: #28a745;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Детализация: Модуль Telegram-бота</h1>
+        <p style="text-align:center;"><a href="./1_project_diagram.html">&larr; Назад к общей структуре</a></p>
+        <svg id="diagram"></svg>
+        <div id="tooltip"></div>
+        <div class="description">
+            <h3><span class="arrow">&rarr;</span> На входе</h3>
+            <p>Модуль получает объект `message` от API Telegram, когда пользователь отправляет команду (например, <code>/search</code>) или любое текстовое сообщение.</p>
+            <h3><span class="arrow">&darr;</span> Что делает</h3>
+            <p><strong>1. Инициализация (<code>bot.py</code>):</strong> Создает и настраивает экземпляр бота, используя токен из <code>config.py</code>. Запускает бесконечный процесс опроса серверов Telegram.</p>
+            <p><strong>2. Маршрутизация (<code>handlers.py</code>):</strong> Принимает входящее сообщение и, в зависимости от его содержания (команда или текст), направляет его в соответствующую функцию-обработчик.</p>
+            <p><strong>3. Обработка:</strong> Выполняет логику, заложенную в обработчике. Для команды <code>/search</code> это означает вызов функции <code>run_spider()</code> из модуля парсинга.</p>
+            <h3><span class="arrow">&larr;</span> На выходе</h3>
+            <p>Модуль отправляет данные во внешние системы:
+                <ul>
+                    <li><strong>Пользователю в Telegram:</strong> Ответные сообщения (например, "Начинаю поиск...").</li>
+                    <li><strong>Модулю `scraping`:</strong> Вызов функции `run_spider()` для запуска процесса парсинга.</li>
+                </ul>
+            </p>
+        </div>
+    </div>
+
+<script>
+const nodes = [
+    { id: 'bot.py', desc: '<strong>bot.py</strong><br>Инициализирует бота и запускает процесс опроса Telegram API.' },
+    { id: 'handlers.py', desc: '<strong>handlers.py</strong><br>Содержит всю логику обработки команд и сообщений. Вызывает другие модули.' },
+    { id: 'handlers_telegram_utils.py', desc: '<strong>handlers_telegram_utils.py</strong><br>Вспомогательные функции для работы с Telegram API.' },
+    { id: 'handlers_data_processing.py', desc: '<strong>handlers_data_processing.py</strong><br>Функции для обработки данных.' },
+    { id: 'handlers_database_utils.py', desc: '<strong>handlers_database_utils.py</strong><br>Функции для работы с базой данных.' },
+    { id: 'handlers_reporting.py', desc: '<strong>handlers_reporting.py</strong><br>Функции для создания отчетов.' }
+];
+
+const links = [
+    { source: 'bot.py', target: 'handlers.py' },
+    { source: 'handlers.py', target: 'handlers_reporting.py' },
+    { source: 'handlers_reporting.py', target: 'handlers_data_processing.py' },
+    { source: 'handlers_reporting.py', target: 'handlers_database_utils.py' },
+    { source: 'handlers_reporting.py', target: 'handlers_telegram_utils.py' }
+];
+
+const width = 900;
+const height = 450;
+
+const svg = d3.select("svg#diagram");
+
+const simulation = d3.forceSimulation(nodes)
+    .force("link", d3.forceLink(links).id(d => d.id).distance(200))
+    .force("charge", d3.forceManyBody().strength(-1000))
+    .force("center", d3.forceCenter(width / 2, height / 2));
+
+const link = svg.append("g")
+    .selectAll("line")
+    .data(links)
+    .enter().append("line")
+    .attr("class", "link")
+    .attr("marker-end", "url(#arrow)");
+
+svg.append("defs").append("marker")
+    .attr("id", "arrow")
+    .attr("viewBox", "0 -5 10 10")
+    .attr("refX", 25)
+    .attr("refY", 0)
+    .attr("markerWidth", 6)
+    .attr("markerHeight", 6)
+    .attr("orient", "auto")
+    .append("path")
+    .attr("d", "M0,-5L10,0L0,5")
+    .style("fill", "#555");
+
+const node = svg.append("g")
+    .selectAll("g")
+    .data(nodes)
+    .enter().append("g")
+    .attr("class", "node")
+    .call(d3.drag()
+        .on("start", dragstarted)
+        .on("drag", dragged)
+        .on("end", dragended));
+
+node.append("rect")
+    .attr("width", 180)
+    .attr("height", 40)
+    .attr("rx", 5);
+
+node.append("text")
+    .text(d => d.id)
+    .attr("x", 90)
+    .attr("y", 20)
+    .attr("text-anchor", "middle")
+    .attr("dominant-baseline", "central");
+
+const tooltip = d3.select("#tooltip");
+
+node.on("mouseover", (event, d) => {
+    tooltip.style("visibility", "visible").html(d.desc);
+})
+.on("mousemove", (event) => {
+    tooltip.style("top", (event.pageY + 15) + "px").style("left", (event.pageX + 15) + "px");
+})
+.on("mouseout", () => {
+    tooltip.style("visibility", "hidden");
+});
+
+simulation.on("tick", () => {
+    link
+        .attr("x1", d => d.source.x)
+        .attr("y1", d => d.source.y)
+        .attr("x2", d => d.target.x)
+        .attr("y2", d => d.target.y);
+    node
+        .attr("transform", d => `translate(${d.x - 90}, ${d.y - 20})`);
+});
+
+function dragstarted(event, d) {
+    if (!event.active) simulation.alphaTarget(0.3).restart();
+    d.fx = d.x;
+    d.fy = d.y;
+}
+function dragged(event, d) {
+    d.fx = event.x;
+    d.fy = event.y;
+}
+function dragended(event, d) {
+    if (!event.active) simulation.alphaTarget(0);
+    d.fx = null;
+    d.fy = null;
+}
+</script>
+</body>
+</html>

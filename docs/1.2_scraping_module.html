@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Детализация: Модуль парсинга</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f8f9fa;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        h1, h2 {
+            text-align: center;
+            color: #1d2129;
+        }
+        svg {
+            width: 100%;
+            height: 60vh;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background: #fff;
+        }
+        .node rect {
+            stroke: #dc3545;
+            fill: #fff5f5;
+            stroke-width: 1.5px;
+        }
+        .node text {
+            font-size: 14px;
+        }
+        .link {
+            fill: none;
+            stroke: #555;
+            stroke-opacity: 0.8;
+            stroke-width: 2px;
+        }
+        #tooltip {
+            position: absolute;
+            visibility: hidden;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: #fff;
+            border-radius: 4px;
+            max-width: 300px;
+            font-size: 14px;
+        }
+        .description {
+            margin-top: 30px;
+            padding: 20px;
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+        }
+        .description h3 {
+            margin-top: 0;
+            color: #dc3545;
+        }
+        .arrow {
+            font-weight: bold;
+            color: #28a745;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Детализация: Модуль парсинга (Scrapy)</h1>
+        <p style="text-align:center;"><a href="./1_project_diagram.html">&larr; Назад к общей структуре</a></p>
+        <svg id="diagram"></svg>
+        <div id="tooltip"></div>
+        <div class="description">
+            <h3><span class="arrow">&rarr;</span> На входе</h3>
+            <p>Модуль получает команду на запуск от <code>telegram_bot/handlers.py</code> в виде вызова функции <code>run_spider()</code> с поисковым запросом (например, "lenovo thinkbook").</p>
+            <h3><span class="arrow">&darr;</span> Что делает</h3>
+            <p><strong>1. Запуск (<code>utils.py</code>):</strong> Функция <code>run_spider()</code> программно конфигурирует и запускает процесс Scrapy.</p>
+            <p><strong>2. Парсинг (<code>spiders/yandex_market.py</code>):</strong> "Паук" Scrapy отправляет HTTP-запросы на Яндекс.Маркет, следует по страницам пагинации и извлекает из HTML-кода "сырые" данные: название, цену, ссылку.</p>
+            <p><strong>3. Декомпозиция (<code>decomposer.py</code>):</strong> Каждый полученный товар обрабатывается классом <code>LaptopDecomposer</code>, который "разбирает" строку с названием на структурированные технические характеристики (процессор, память, накопитель и т.д.).</p>
+            <h3><span class="arrow">&larr;</span> На выходе</h3>
+            <p>Модуль возвращает список структурированных данных (словарей Python), готовых для сохранения. Этот список передается в <strong>модуль базы данных</strong> для сохранения в <code>marketplace_deals.db</code>.</p>
+        </div>
+    </div>
+
+<script>
+const nodes = [
+    { id: 'utils.py', desc: '<strong>utils.py</strong><br>Запускает процесс Scrapy и возвращает результат.' },
+    { id: 'settings.py', desc: '<strong>settings.py</strong><br>Конфигурация Scrapy: User-Agent, задержки, конвейеры.' },
+    { id: 'spiders/yandex_market.py', desc: '<strong>yandex_market.py</strong><br>Паук, извлекающий данные с Яндекс.Маркета.' },
+    { id: 'decomposer.py', desc: '<strong>decomposer.py</strong><br>Разбирает названия товаров на характеристики.' }
+];
+
+const links = [
+    { source: 'utils.py', target: 'spiders/yandex_market.py' },
+    { source: 'utils.py', target: 'settings.py' },
+    { source: 'spiders/yandex_market.py', target: 'decomposer.py' }
+];
+
+const width = 900;
+const height = 540;
+
+const svg = d3.select("svg#diagram");
+
+const simulation = d3.forceSimulation(nodes)
+    .force("link", d3.forceLink(links).id(d => d.id).distance(200))
+    .force("charge", d3.forceManyBody().strength(-1200))
+    .force("center", d3.forceCenter(width / 2, height / 2));
+
+const link = svg.append("g")
+    .selectAll("line")
+    .data(links)
+    .enter().append("line")
+    .attr("class", "link")
+    .attr("marker-end", "url(#arrow)");
+
+svg.append("defs").append("marker")
+    .attr("id", "arrow")
+    .attr("viewBox", "0 -5 10 10")
+    .attr("refX", 25)
+    .attr("refY", 0)
+    .attr("markerWidth", 6)
+    .attr("markerHeight", 6)
+    .attr("orient", "auto")
+    .append("path")
+    .attr("d", "M0,-5L10,0L0,5")
+    .style("fill", "#555");
+
+const node = svg.append("g")
+    .selectAll("g")
+    .data(nodes)
+    .enter().append("g")
+    .attr("class", "node")
+    .call(d3.drag()
+        .on("start", dragstarted)
+        .on("drag", dragged)
+        .on("end", dragended));
+
+node.append("rect")
+    .attr("width", 200)
+    .attr("height", 40)
+    .attr("rx", 5);
+
+node.append("text")
+    .text(d => d.id)
+    .attr("x", 100)
+    .attr("y", 20)
+    .attr("text-anchor", "middle")
+    .attr("dominant-baseline", "central");
+
+const tooltip = d3.select("#tooltip");
+
+node.on("mouseover", (event, d) => {
+    tooltip.style("visibility", "visible").html(d.desc);
+})
+.on("mousemove", (event) => {
+    tooltip.style("top", (event.pageY + 15) + "px").style("left", (event.pageX + 15) + "px");
+})
+.on("mouseout", () => {
+    tooltip.style("visibility", "hidden");
+});
+
+simulation.on("tick", () => {
+    link
+        .attr("x1", d => d.source.x)
+        .attr("y1", d => d.source.y)
+        .attr("x2", d => d.target.x)
+        .attr("y2", d => d.target.y);
+    node
+        .attr("transform", d => `translate(${d.x - 100}, ${d.y - 20})`);
+});
+
+function dragstarted(event, d) {
+    if (!event.active) simulation.alphaTarget(0.3).restart();
+    d.fx = d.x;
+    d.fy = d.y;
+}
+function dragged(event, d) {
+    d.fx = event.x;
+    d.fy = event.y;
+}
+function dragended(event, d) {
+    if (!event.active) simulation.alphaTarget(0);
+    d.fx = null;
+    d.fy = null;
+}
+</script>
+</body>
+</html>
