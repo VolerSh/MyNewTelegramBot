@@ -8,6 +8,10 @@ class FilterSpider(scrapy.Spider):
     name = 'filter_spider'
     allowed_domains = ['market.yandex.ru']
 
+    def __init__(self, *args, **kwargs):
+        super(FilterSpider, self).__init__(*args, **kwargs)
+        self.successful_sleeps = {}
+
     # Стартуем на странице со всеми фильтрами. Этот URL используется для всех версий.
     start_urls = ["https://market.yandex.ru/catalog--noutbuki/26895412/list-filters"]
 
@@ -72,18 +76,16 @@ class FilterSpider(scrapy.Spider):
             scrolls_without_new_brands = 0
             max_scrolls_without_new = 3  # Количество "пустых" прокруток для завершения
             
-            initial_sleep_time = 0.05 # Начальная пауза
-            max_sleep_time = 1.6     # Максимальная пауза
-            sleep_increase_factor = 2 # Коэффициент увеличения паузы
+            initial_sleep_time = 0.0001 # Начальная пауза
+            max_sleep_time = 1.0     # Максимальная пауза
+            sleep_increase_factor = 10 # Коэффициент увеличения паузы
             current_sleep_time = initial_sleep_time
 
             while True:
                 brands_before = len(all_brands)
 
-                # Парсим видимые бренды
-                current_html = await page.content()
-                temp_response = HtmlResponse(url=page.url, body=current_html, encoding='utf-8')
-                newly_found_brands = await self.parse_brands(temp_response)
+                # Парсим видимые бренды напрямую через Playwright API
+                newly_found_brands = await self.parse_brands(page)
                 all_brands.update(newly_found_brands)
                 
                 brands_after = len(all_brands)
@@ -101,6 +103,9 @@ class FilterSpider(scrapy.Spider):
                         self.log(f"Увеличиваем паузу до {current_sleep_time:.2f} сек.")
                 else:
                     scrolls_without_new_brands = 0  # Сбрасываем счетчик, если что-то нашли
+                    # Записываем статистику успешной паузы
+                    sleep_key = f"{current_sleep_time:.2f}"
+                    self.successful_sleeps[sleep_key] = self.successful_sleeps.get(sleep_key, 0) + 1
                     current_sleep_time = initial_sleep_time # Сбрасываем паузу до начального значения
                     self.log(f"Новые бренды найдены. Сбрасываем паузу до {current_sleep_time:.2f} сек.")
 
@@ -111,12 +116,17 @@ class FilterSpider(scrapy.Spider):
                     self.log(f"После {max_scrolls_without_new} прокруток без новых брендов и при максимальной паузе завершаем скроллинг.")
                     break
 
-                # Прокручиваем контейнер
+                # Прокручиваем контейнер трижды за итерацию
+                scroll_count = 3 # Количество прокруток за один раз
                 await page.evaluate(f'''
                     const container = document.querySelector('{scroll_container_selector}');
-                    if (container) {{ container.scrollTop += container.clientHeight; }}
+                    if (container) {{
+                        for (let i = 0; i < {scroll_count}; i++) {{
+                            container.scrollTop += container.clientHeight;
+                        }}
+                    }}
                 ''')
-                await asyncio.sleep(current_sleep_time)
+                await asyncio.sleep(current_sleep_time) # Пауза после всех прокруток
             
             self.log(f"Скроллинг завершен. Всего собрано {len(all_brands)} уникальных брендов.")
 
@@ -132,31 +142,38 @@ class FilterSpider(scrapy.Spider):
             self.log("Закрываем страницу Playwright.")
             await page.close()
 
-    async def parse_brands(self, response):
+    async def parse_brands(self, page):
         """
-        УНИВЕРСАЛЬНЫЙ ПАРСЕР.
-        Вызывается Версией 1 и Версией 2. Просто парсит то, что есть на странице.
+        ПАРСЕР, РАБОТАЮЩИЙ НАПРЯМУЮ С PLAYWRIGHT.
+        Извлекает текст брендов, используя page.locator.
         """
-        self.log(f"Парсим бренды со страницы: {response.url}")
+        self.log(f"Парсим бренды напрямую со страницы: {page.url}")
         
-        # Находим контейнер фильтра "Бренд"
-        brand_filter_container = response.css('div[data-auto="filter"][data-filter-id="7893318"]')
+        # Селектор для текстовых элементов брендов
+        brand_selector = 'div[data-filter-id="7893318"] div[data-test-id="virtuoso-item-list"] label[data-auto^="filter-list-item-"] span._1-LFf._2KcG8'
         
-        found_brands = set()
-        if brand_filter_container:
-            # Ищем элементы брендов только внутри этого контейнера, используя более специфичный селектор
-            # Селектор: ищем span с классами _1-LFf и _2KcG8, который содержит текст бренда.
-            # Этот span находится внутри label, который имеет data-auto="filter-list-item-..."
-            # И все это находится внутри virtuoso-item-list, который содержит сами элементы списка.
-            brand_elements = brand_filter_container.css('div[data-test-id="virtuoso-item-list"] label[data-auto^="filter-list-item-"] span._1-LFf._2KcG8::text')
+        try:
+            # Находим все элементы, соответствующие селектору
+            brand_elements = await page.locator(brand_selector).all_inner_texts()
             self.log(f"Найдено {len(brand_elements)} текстовых элементов брендов на текущем экране.")
             
-            for brand_name in brand_elements.getall():
-                found_brands.add(brand_name.strip())
+            # Очищаем и добавляем в set
+            found_brands = {name.strip() for name in brand_elements}
+            return found_brands
+            
+        except Exception as e:
+            self.log(f"Ошибка при парсинге брендов через Playwright: {e}")
+            return set()
+
+    def close(self, reason):
+        self.log("Паук завершает работу.")
+        if self.successful_sleeps:
+            self.log("Статистика по успешным паузам (время в сек.: кол-во успешных находок):")
+            sorted_sleeps = sorted(self.successful_sleeps.items(), key=lambda item: float(item[0]))
+            for sleep_time, count in sorted_sleeps:
+                self.log(f"- {sleep_time}: {count} раз")
         else:
-            self.log("Контейнер фильтра 'Бренд' не найден.")
-        
-        return found_brands
+            self.log("Статистика по успешным паузам не собрана.")
 
     async def errback(self, failure):
         self.log(f"Playwright-запрос провалился: {failure.value}")
