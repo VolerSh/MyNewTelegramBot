@@ -55,45 +55,68 @@ class FilterSpider(scrapy.Spider):
         Управляет страницей: кликает, ждет, скроллит и затем вызывает parse_brands.
         """
         page = response.meta["playwright_page"]
-        self.log(f"Загружена страница '{await page.title()}'. Начинаем манипуляции в parse_and_scroll.")
-        try:
-            # Шаг 1: Делаем скриншот до каких-либо действий
-            await page.screenshot(path="before_click.png")
-            self.log("Сделан скриншот 'before_click.png'.")
+        self.log(f"Загружена страница '{await page.title()}'. Начинаем манипуляции.")
+        
+        all_brands = set()
 
-            # Шаг 2: Кликнуть на кнопку "показать все"
+        try:
+            # Шаг 1: Кликнуть на кнопку "показать все"
             show_all_button_selector = 'div[data-filter-id="7893318"] button[aria-expanded="false"]'
-            self.log(f"Ищем кнопку 'показать все' по селектору: {show_all_button_selector}")
             await page.click(show_all_button_selector, timeout=5000)
             self.log("Кнопка 'показать все' нажата.")
+            await page.wait_for_selector('div[data-test-id="virtuoso-scroller"]', timeout=5000)
+            self.log("Список брендов раскрыт, virtuoso-scroller появился.")
 
-            # Шаг 3: Дождаться, пока список раскроется
-            expanded_button_selector = 'div[data-filter-id="7893318"] button[aria-expanded="true"]'
-            await page.wait_for_selector(expanded_button_selector, timeout=5000)
-            self.log("Список брендов раскрыт.")
+            # Шаг 2: Скроллинг и парсинг на лету
+            scroll_container_selector = 'div[data-test-id="virtuoso-scroller"]'
+            scrolls_without_new_brands = 0
+            max_scrolls_without_new = 3  # Количество "пустых" прокруток для завершения
 
-            # Шаг 4: Делаем скриншот после клика
-            await page.screenshot(path="after_click.png")
-            self.log("Сделан скриншот 'after_click.png'.")
+            while True:
+                brands_before = len(all_brands)
+
+                # Парсим видимые бренды
+                current_html = await page.content()
+                temp_response = HtmlResponse(url=page.url, body=current_html, encoding='utf-8')
+                newly_found_brands = await self.parse_brands(temp_response)
+                all_brands.update(newly_found_brands)
+                
+                brands_after = len(all_brands)
+                new_brands_count = brands_after - brands_before
+
+                self.log(f"Найдено {len(newly_found_brands)} на экране. Добавлено {new_brands_count} новых. Всего: {brands_after}.")
+
+                # Проверяем, были ли найдены новые бренды
+                if new_brands_count == 0:
+                    scrolls_without_new_brands += 1
+                    self.log(f"Новых брендов не найдено. Счетчик 'пустых' прокруток: {scrolls_without_new_brands}.")
+                else:
+                    scrolls_without_new_brands = 0  # Сбрасываем счетчик, если что-то нашли
+
+                # Условие выхода из цикла
+                if scrolls_without_new_brands >= max_scrolls_without_new:
+                    self.log(f"После {max_scrolls_without_new} прокруток без новых брендов завершаем скроллинг.")
+                    break
+
+                # Прокручиваем контейнер
+                await page.evaluate(f'''
+                    const container = document.querySelector('{scroll_container_selector}');
+                    if (container) {{ container.scrollTop += container.clientHeight; }}
+                ''')
+                await asyncio.sleep(1.5) # Немного увеличим паузу для надежности
             
-            # Шаг 5: Получаем HTML после клика и передаем его в парсер
-            self.log("Получаем HTML после клика и передаем в parse_brands.")
-            final_html = await page.content()
-            
-            new_response = HtmlResponse(
-                url=page.url,
-                body=final_html,
-                encoding='utf-8',
-                request=response.request
-            )
-            
-            async for item in self.parse_brands(new_response):
+            self.log(f"Скроллинг завершен. Всего собрано {len(all_brands)} уникальных брендов.")
+
+            # Шаг 3: Генерируем BrandItem из собранного набора
+            for brand_name in sorted(list(all_brands)):
+                item = BrandItem()
+                item['brand'] = brand_name
                 yield item
 
         except Exception as e:
             self.log(f"Произошла ошибка в parse_and_scroll: {e}")
         finally:
-            self.log("Закрываем страницу Playwright в parse_and_scroll.")
+            self.log("Закрываем страницу Playwright.")
             await page.close()
 
     async def parse_brands(self, response):
@@ -102,20 +125,25 @@ class FilterSpider(scrapy.Spider):
         Вызывается Версией 1 и Версией 2. Просто парсит то, что есть на странице.
         """
         self.log(f"Парсим бренды со страницы: {response.url}")
-
+        
+        # Находим контейнер фильтра "Бренд"
         brand_filter_container = response.css('div[data-auto="filter"][data-filter-id="7893318"]')
+        
+        found_brands = set()
         if brand_filter_container:
-            brand_elements = brand_filter_container.css('label[data-auto^="filter-list-item-"]')
-            self.log(f"ИТОГО найдено {len(brand_elements)} брендов.")
+            # Ищем элементы брендов только внутри этого контейнера, используя более специфичный селектор
+            # Селектор: ищем span с классами _1-LFf и _2KcG8, который содержит текст бренда.
+            # Этот span находится внутри label, который имеет data-auto="filter-list-item-..."
+            # И все это находится внутри virtuoso-item-list, который содержит сами элементы списка.
+            brand_elements = brand_filter_container.css('div[data-test-id="virtuoso-item-list"] label[data-auto^="filter-list-item-"] span._1-LFf._2KcG8::text')
+            self.log(f"Найдено {len(brand_elements)} текстовых элементов брендов на текущем экране.")
             
-            for brand_element in brand_elements:
-                brand_name = brand_element.css('span._1-LFf._2KcG8::text').get()
-                if brand_name:
-                    item = BrandItem()
-                    item['brand'] = brand_name.strip()
-                    yield item
+            for brand_name in brand_elements.getall():
+                found_brands.add(brand_name.strip())
         else:
-            self.log("Контейнер фильтра 'Бренд' не найден")
+            self.log("Контейнер фильтра 'Бренд' не найден.")
+        
+        return found_brands
 
     async def errback(self, failure):
         self.log(f"Playwright-запрос провалился: {failure.value}")

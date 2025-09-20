@@ -88,3 +88,4 @@ DOWNLOAD_HANDLERS = {
 PLAYWRIGHT_BROWSER_TYPE = "chromium"
 # Set log encoding to UTF-8 to fix garbled output in Windows console
 LOG_ENCODING = 'utf-8'
+LOG_STDOUT = True
