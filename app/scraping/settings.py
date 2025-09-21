@@ -89,3 +89,15 @@ PLAYWRIGHT_BROWSER_TYPE = "chromium"
 # Set log encoding to UTF-8 to fix garbled output in Windows console
 LOG_ENCODING = 'utf-8'
 LOG_STDOUT = True
+
+# Настройки экспорта данных (Feeds)
+FEEDS = {
+    'results\dictionaries\filters_ID.csv': {
+        'format': 'csv',
+        'encoding': 'utf8',
+        'store_empty': False,
+        'item_classes': ['app.scraping.items.FilterInfoItem'],
+        'fields': ['filter_name', 'filter_id', 'filter_type'],
+        'overwrite': True,
+    },
+}

@@ -76,8 +76,8 @@ class FilterSpider(scrapy.Spider):
             scrolls_without_new_brands = 0
             max_scrolls_without_new = 3  # Количество "пустых" прокруток для завершения
             
-            initial_sleep_time = 0.1 # Начальная пауза
-            max_sleep_time = 2.5     # Максимальная пауза
+            initial_sleep_time = 0.001 # Начальная пауза
+            max_sleep_time = 1     # Максимальная пауза
             sleep_increase_factor = 5 # Коэффициент увеличения паузы
             current_sleep_time = initial_sleep_time
 
@@ -116,17 +116,12 @@ class FilterSpider(scrapy.Spider):
                     self.log(f"После {max_scrolls_without_new} прокруток без новых брендов и при максимальной паузе завершаем скроллинг.")
                     break
 
-                # Прокручиваем контейнер трижды за итерацию
-                scroll_count = 2 # Количество прокруток за один раз
+                # Прокручиваем контейнер
                 await page.evaluate(f'''
                     const container = document.querySelector('{scroll_container_selector}');
-                    if (container) {{
-                        for (let i = 0; i < {scroll_count}; i++) {{
-                            container.scrollTop += container.clientHeight;
-                        }}
-                    }}
+                    if (container) {{ container.scrollTop += container.clientHeight; }}
                 ''')
-                await asyncio.sleep(current_sleep_time) # Пауза после всех прокруток
+                await asyncio.sleep(current_sleep_time)
             
             self.log(f"Скроллинг завершен. Всего собрано {len(all_brands)} уникальных брендов.")
 
